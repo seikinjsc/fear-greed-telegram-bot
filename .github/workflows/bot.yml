@@ -31,82 +31,126 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: 🔧 Create .env file
-      run: |
-        echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
-        echo "OWNER_CHAT_ID=${{ secrets.OWNER_CHAT_ID }}" >> .env
-        echo "GROUP_CHAT_ID=${{ secrets.GROUP_CHAT_ID }}" >> .env
-    
-    - name: 📊 Run report generation
+    - name: 📊 Run report and send to Telegram
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        OWNER_CHAT_ID: ${{ secrets.OWNER_CHAT_ID }}
+        GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
       run: |
         python -c "
-        from fear_greed_dashboard import FearGreedDashboard
-        from telegram import Bot
-        import asyncio
         import os
+        import asyncio
         from datetime import datetime
+        from telegram import Bot
+        from fear_greed_dashboard import FearGreedDashboard
         
         async def send_report():
+            # Lấy biến môi trường
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+            owner_id = os.environ.get('OWNER_CHAT_ID')
+            group_id = os.environ.get('GROUP_CHAT_ID')
+            
+            # Debug: Kiểm tra biến môi trường
+            print('='*60)
+            print('🔍 KIỂM TRA BIẾN MÔI TRƯỜNG')
+            print('='*60)
+            print(f'Bot Token: {\"✅ Có\" if bot_token else \"❌ Không có\"}')
+            print(f'Owner ID: {\"✅ Có (\" + owner_id + \")\" if owner_id else \"❌ Không có\"}')
+            print(f'Group ID: {\"✅ Có (\" + group_id + \")\" if group_id else \"❌ Không có\"}')
+            print('='*60)
+            print()
+            
+            if not bot_token:
+                print('❌ TELEGRAM_BOT_TOKEN không được thiết lập!')
+                print('💡 Kiểm tra GitHub Secrets')
+                return
+            
+            if not owner_id:
+                print('❌ OWNER_CHAT_ID không được thiết lập!')
+                print('💡 Kiểm tra GitHub Secrets')
+                return
+            
             # Khởi tạo dashboard
+            print('🔄 Đang lấy dữ liệu...')
             dashboard = FearGreedDashboard()
             
-            # Lấy dữ liệu
-            print('🔄 Đang lấy dữ liệu...')
             if not dashboard.fetch_data(limit=90):
-                print('❌ Không thể lấy dữ liệu')
+                print('❌ Không thể lấy dữ liệu từ API')
                 return
+            
+            print(f'✅ Đã lấy {len(dashboard.data)} bản ghi')
+            print(f'📊 Giá trị: {dashboard.current_value} - {dashboard.current_classification_vi}')
+            print()
             
             # Tạo báo cáo
             print('🎨 Đang tạo báo cáo...')
             report_file = 'report_temp.png'
             dashboard.create_full_report(save_path=report_file)
             
+            if not os.path.exists(report_file):
+                print('❌ Không thể tạo file báo cáo')
+                return
+            
+            file_size = os.path.getsize(report_file) / 1024
+            print(f'✅ Đã tạo báo cáo ({file_size:.1f} KB)')
+            print()
+            
             # Gửi Telegram
             print('📤 Đang gửi Telegram...')
-            bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-            owner_id = os.getenv('OWNER_CHAT_ID')
-            group_id = os.getenv('GROUP_CHAT_ID')
-            
             bot = Bot(token=bot_token)
             
-            caption = f'''
-        📊 **BÁO CÁO CHỈ SỐ TÂM LÝ THỊ TRƯỜNG**
-        ⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}
-        
-        **Hiện tại:** {dashboard.current_value} - {dashboard.current_classification_vi}
-        
-        🤖 Tự động từ GitHub Actions
-        #FearGreed #Crypto #AutoReport
-        '''
+            caption = f'''📊 **BÁO CÁO CHỈ SỐ TÂM LÝ THỊ TRƯỜNG**
+⏰ {datetime.now().strftime(\"%d/%m/%Y %H:%M\")}
+
+**Hiện tại:** {dashboard.current_value} - {dashboard.current_classification_vi}
+
+🤖 Tự động từ GitHub Actions
+#FearGreed #Crypto #AutoReport'''
             
-            # Gửi cho owner
-            with open(report_file, 'rb') as photo:
-                await bot.send_photo(
-                    chat_id=owner_id,
-                    photo=photo,
-                    caption=caption,
-                    parse_mode='Markdown'
-                )
-            print(f'✅ Đã gửi cho owner: {owner_id}')
-            
-            # Gửi vào group nếu có
-            if group_id and group_id != 'YOUR_GROUP_ID':
+            try:
+                # Gửi cho owner
                 with open(report_file, 'rb') as photo:
                     await bot.send_photo(
-                        chat_id=group_id,
+                        chat_id=owner_id,
                         photo=photo,
                         caption=caption,
                         parse_mode='Markdown'
                     )
-                print(f'✅ Đã gửi vào group: {group_id}')
+                print(f'✅ Đã gửi cho owner: {owner_id}')
+                
+                # Gửi vào group nếu có
+                if group_id and group_id != 'YOUR_GROUP_ID' and group_id.strip():
+                    with open(report_file, 'rb') as photo:
+                        await bot.send_photo(
+                            chat_id=group_id,
+                            photo=photo,
+                            caption=caption,
+                            parse_mode='Markdown'
+                        )
+                    print(f'✅ Đã gửi vào group: {group_id}')
+                
+            except Exception as e:
+                print(f'❌ Lỗi khi gửi: {e}')
+                raise
             
             # Xóa file tạm
             os.remove(report_file)
             print('🧹 Đã dọn dẹp file tạm')
+            print()
+            print('='*60)
+            print('🎉 HOÀN TẤT!')
+            print('='*60)
         
         # Chạy async function
         asyncio.run(send_report())
         "
     
     - name: ✅ Job completed
+      if: success()
       run: echo "🎉 Báo cáo đã được gửi thành công!"
+    
+    - name: ❌ Job failed
+      if: failure()
+      run: |
+        echo "❌ Có lỗi xảy ra!"
+        echo "💡 Kiểm tra logs ở trên để debug"
