@@ -13,6 +13,17 @@ import numpy as np
 from datetime import datetime, timedelta
 import seaborn as sns
 import matplotlib.dates as mdates
+import warnings
+import matplotlib
+
+# Tắt warning về font/emoji
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
+
+# Sử dụng backend không cần display (quan trọng cho GitHub Actions)
+matplotlib.use('Agg')
+
+import matplotlib.pyplot as plt
+# ... phần còn lại giữ nguyên
 
 # Cấu hình font tiếng Việt
 plt.rcParams['font.family'] = 'DejaVu Sans'
