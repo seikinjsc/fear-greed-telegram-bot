@@ -1,0 +1,112 @@
+name: Fear & Greed Bot
+
+on:
+  # Chạy theo lịch (4 lần/ngày)
+  schedule:
+    - cron: '0 1,5,9,13 * * *'  # 8h, 12h, 16h, 20h (UTC+7)
+  
+  # Cho phép chạy thủ công
+  workflow_dispatch:
+  
+  # Chạy khi push code (để test)
+  push:
+    branches: [ main ]
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 🔧 Create .env file
+      run: |
+        echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
+        echo "OWNER_CHAT_ID=${{ secrets.OWNER_CHAT_ID }}" >> .env
+        echo "GROUP_CHAT_ID=${{ secrets.GROUP_CHAT_ID }}" >> .env
+    
+    - name: 📊 Run report generation
+      run: |
+        python -c "
+        from fear_greed_dashboard import FearGreedDashboard
+        from telegram import Bot
+        import asyncio
+        import os
+        from datetime import datetime
+        
+        async def send_report():
+            # Khởi tạo dashboard
+            dashboard = FearGreedDashboard()
+            
+            # Lấy dữ liệu
+            print('🔄 Đang lấy dữ liệu...')
+            if not dashboard.fetch_data(limit=90):
+                print('❌ Không thể lấy dữ liệu')
+                return
+            
+            # Tạo báo cáo
+            print('🎨 Đang tạo báo cáo...')
+            report_file = 'report_temp.png'
+            dashboard.create_full_report(save_path=report_file)
+            
+            # Gửi Telegram
+            print('📤 Đang gửi Telegram...')
+            bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+            owner_id = os.getenv('OWNER_CHAT_ID')
+            group_id = os.getenv('GROUP_CHAT_ID')
+            
+            bot = Bot(token=bot_token)
+            
+            caption = f'''
+        📊 **BÁO CÁO CHỈ SỐ TÂM LÝ THỊ TRƯỜNG**
+        ⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}
+        
+        **Hiện tại:** {dashboard.current_value} - {dashboard.current_classification_vi}
+        
+        🤖 Tự động từ GitHub Actions
+        #FearGreed #Crypto #AutoReport
+        '''
+            
+            # Gửi cho owner
+            with open(report_file, 'rb') as photo:
+                await bot.send_photo(
+                    chat_id=owner_id,
+                    photo=photo,
+                    caption=caption,
+                    parse_mode='Markdown'
+                )
+            print(f'✅ Đã gửi cho owner: {owner_id}')
+            
+            # Gửi vào group nếu có
+            if group_id and group_id != 'YOUR_GROUP_ID':
+                with open(report_file, 'rb') as photo:
+                    await bot.send_photo(
+                        chat_id=group_id,
+                        photo=photo,
+                        caption=caption,
+                        parse_mode='Markdown'
+                    )
+                print(f'✅ Đã gửi vào group: {group_id}')
+            
+            # Xóa file tạm
+            os.remove(report_file)
+            print('🧹 Đã dọn dẹp file tạm')
+        
+        # Chạy async function
+        asyncio.run(send_report())
+        "
+    
+    - name: ✅ Job completed
+      run: echo "🎉 Báo cáo đã được gửi thành công!"
