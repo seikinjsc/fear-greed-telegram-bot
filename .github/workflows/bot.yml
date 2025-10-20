@@ -27,15 +27,16 @@ jobs:
         cache: 'pip'
     
     - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
     - name: 🔍 Debug secrets (chi tiết)
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         OWNER_CHAT_ID: ${{ secrets.OWNER_CHAT_ID }}
         GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
       run: python debug_secrets.py
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
     
     - name: 📊 Run report and send to Telegram
       env:
@@ -70,7 +71,6 @@ jobs:
             if not bot_token or not bot_token.strip():
                 print('❌ TELEGRAM_BOT_TOKEN không được thiết lập!')
                 print('💡 Kiểm tra GitHub Secrets')
-                print(f'📊 Debug: token=\"{bot_token}\"')
                 return
             
             if not owner_id:
@@ -128,14 +128,17 @@ jobs:
                 
                 # Gửi vào group nếu có
                 if group_id and group_id != 'YOUR_GROUP_ID' and group_id.strip():
-                    with open(report_file, 'rb') as photo:
-                        await bot.send_photo(
-                            chat_id=group_id,
-                            photo=photo,
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                    print(f'✅ Đã gửi vào group: {group_id}')
+                    try:
+                        with open(report_file, 'rb') as photo:
+                            await bot.send_photo(
+                                chat_id=group_id,
+                                photo=photo,
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                        print(f'✅ Đã gửi vào group: {group_id}')
+                    except Exception as group_error:
+                        print(f'⚠️  Không thể gửi vào group: {group_error}')
                 
             except Exception as e:
                 print(f'❌ Lỗi khi gửi: {e}')
